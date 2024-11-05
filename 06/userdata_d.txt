@@ -1,0 +1,326 @@
+#!/bin/bash
+# Update the system and install necessary packages
+sudo apt update -y
+sudo apt install -y python3 python3-venv python3-pip mysql-client
+sudo rm /usr/lib/python3.12/EXTERNALLY-MANAGED
+
+# Create a project directory
+mkdir -p /home/ubuntu/flask_app
+cd /home/ubuntu/flask_app
+
+# Install required Python packages
+sudo pip install Flask mysql-connector-python
+
+# Create the Flask app (app.py)
+cat <<EOL > /home/ubuntu/flask_app/app.py
+import os
+from flask import Flask, render_template, request, redirect, url_for, flash
+import mysql.connector
+from mysql.connector import Error
+
+app = Flask(__name__)
+app.secret_key = os.urandom(24)
+
+# MySQL Configuration
+db_config = {
+    'host': 'feedback.cniuq0gcmxho.ap-south-1.rds.amazonaws.com',
+    'user': 'admin',
+    'password': 'password',
+    'database': 'feedback'
+}
+
+def create_connection():
+    try:
+        connection = mysql.connector.connect(**db_config)
+        return connection
+    except Error as e:
+        print(f"Error connecting to MySQL: {e}")
+        return None
+
+def create_table():
+    try:
+        connection = create_connection()
+        cursor = connection.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS feedback (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                email VARCHAR(100) NOT NULL,
+                message TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        connection.commit()
+    except Error as e:
+        print(f"Error creating table: {e}")
+    finally:
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/submit_feedback', methods=['POST'])
+def submit_feedback():
+    if request.method == 'POST':
+        name = request.form['name']
+        email = request.form['email']
+        message = request.form['message']
+
+        try:
+            connection = create_connection()
+            cursor = connection.cursor()
+            query = "INSERT INTO feedback (name, email, message) VALUES (%s, %s, %s)"
+            values = (name, email, message)
+            cursor.execute(query, values)
+            connection.commit()
+            flash('Feedback submitted successfully!', 'success')
+        except Error as e:
+            print(f"Error inserting feedback: {e}")
+            flash('An error occurred. Please try again.', 'error')
+        finally:
+            if connection.is_connected():
+                cursor.close()
+                connection.close()
+
+    return redirect(url_for('index'))
+
+@app.route('/all_feedbacks')
+def all_feedbacks():
+    try:
+        connection = create_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM feedback ORDER BY created_at DESC")
+        feedbacks = cursor.fetchall()
+        return render_template('all_feedbacks.html', feedbacks=feedbacks)
+    except Error as e:
+        print(f"Error fetching feedbacks: {e}")
+        flash('An error occurred while fetching feedbacks.', 'error')
+        return redirect(url_for('index'))
+    finally:
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+
+if __name__ == '__main__':
+    create_table()
+    app.run(debug=True,port=80,host="0.0.0.0")
+EOL
+
+# Create the HTML template for the index page (index.html)
+mkdir -p /home/ubuntu/flask_app/templates
+cat <<EOL > /home/ubuntu/flask_app/templates/index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedback Form</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f4f8;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        input, textarea {
+            margin-bottom: 15px;
+            padding: 10px;
+            border: 1px solid #bdc3c7;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            padding: 12px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .flash-message {
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        a {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            color: #3498db;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>Feedback Form</h1>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <form action="{{ url_for('submit_feedback') }}" method="POST">
+        <input type="text" name="name" placeholder="Your Name" required>
+        <input type="email" name="email" placeholder="Your Email" required>
+        <textarea name="message" placeholder="Your Feedback" rows="5" required></textarea>
+        <button type="submit">Submit Feedback</button>
+    </form>
+    <a href="{{ url_for('all_feedbacks') }}">View All Feedbacks</a>
+</body>
+</html>
+EOL
+
+
+
+cat <<EOL > /home/ubuntu/flask_app/templates/all_feedbacks.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Feedbacks</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f4f8;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #ffffff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        th, td {
+            border: 1px solid #ecf0f1;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #3498db;
+            color: #ffffff;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        .flash-message {
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        a {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            color: #3498db;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>All Feedbacks</h1>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Message</th>
+                <th>Created At</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for feedback in feedbacks %}
+            <tr>
+                <td>{{ feedback.id }}</td>
+                <td>{{ feedback.name }}</td>
+                <td>{{ feedback.email }}</td>
+                <td>{{ feedback.message }}</td>
+                <td>{{ feedback.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <a href="{{ url_for('index') }}">Back to Feedback Form</a>
+</body>
+</html>
+EOL
+
+
+# Wait for the RDS MySQL database to be available before attempting to connect and create the feedback database.
+while ! mysql -h feedback.cniuq0gcmxho.ap-south-1.rds.amazonaws.com -u admin -ppassword -e "exit"; do
+    echo "Waiting for the MySQL database..."
+    sleep 10
+done
+
+# Create the feedback database
+mysql -h feedback.cniuq0gcmxho.ap-south-1.rds.amazonaws.com -u admin -ppassword -e "CREATE DATABASE IF NOT EXISTS feedback;"
+
+# Run the Flask app
+sudo python3 app.py
