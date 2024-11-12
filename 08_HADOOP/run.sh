@@ -94,7 +94,7 @@ echo "Running Hadoop Streaming job..."
 if [ -n "$COMBINER" ]; then
     hadoop jar $HADOOP_HOME/share/hadoop/tools/lib/hadoop-streaming-*.jar \
         -input input/$FILEINPUT \
-        -output output \
+        -output output \ 
         -mapper "$(which python3) $MAPPER" \
         -reducer "$(which python3) $REDUCER" \
         -combiner "$(which python3) $COMBINER"
