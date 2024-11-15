@@ -1,0 +1,13 @@
+1. Country with highest number of adults (excluding USA):
++--------------+-----+
+|native_country|count|
++--------------+-----+
+|        Mexico|  643|
++--------------+-----+
+
+2. Number of people with Masters or higher education in Tech-support:
+Number of people with Masters/Doctorate in Tech-support: 40
+
+3. Number of unmarried males in Local-govt:
+Number of unmarried males in Local-govt: 384
+
